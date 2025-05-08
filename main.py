@@ -23,52 +23,44 @@ options.add_argument("--enable-unsafe-swiftshader")
 service = Service("./chromedriver.exe")
 driver = webdriver.Chrome(service=service, options=options)
 
-# sumber = [
-#     {
-#         "nama": "kompas",
-#         "list_artikel": "list media_rows.list-berita",
-#         "title": "",
-#         "date": "",
-#         "content": "read__content"
-#     }
-# ]
-
 
 def scrape_berita(tag, data):
     page = 1
     while True:
         print(f"[{tag}] Page ke", page)
-        url = f"https://www.kompas.com/tag/{tag}?page={page}"
+        url = f"https://www.kompas.com/tag/{tag}?page={page}&type=artikel"
         driver.get(url)
 
-        try:
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "sectionBox"))
-            )
-        except TimeoutException:
-            print(f"[{tag}] Tidak menemukan sectionBox di page {page}, selesai.")
-            break
-
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located(
+                (By.CLASS_NAME, "sectionBox"))
+        )
         sections = driver.find_elements(By.CLASS_NAME, "sectionBox")
 
-        for section in sections:
+        if len(sections) == 2:
+            print(f"[{tag}] Tidak ada artikel baru.")
+            break
+
+        main_article = sections[0].find_element(
+            By.CSS_SELECTOR, ".articleList.-list")
+
+        list_artikel = main_article.find_elements(By.CLASS_NAME, "articleItem")
+        print(f"[{tag}] Jumlah artikel: {len(list_artikel)}")
+
+        for article_item in list_artikel:
             try:
-                try:
-                    articles = section.find_element(By.CLASS_NAME, "articleHL")
-                except:
-                    articles = section.find_element(
-                        By.CLASS_NAME, "articleList.-list")
+                article = {"tag": tag}
+                article["link"] = article_item.find_element(
+                    By.TAG_NAME, 'a').get_attribute('href')
+                print(f"[{tag}] Link: {article['link']}")
+                article["date"] = article_item.find_element(
+                    By.CLASS_NAME, 'articlePost-date').text.strip()
+                print(f"[{tag}] Tanggal: {article['date']}")
+                article["title"] = article_item.find_element(
+                    By.CLASS_NAME, 'articleTitle').text.strip()
+                print(f"[{tag}] Judul: {article['title']}")
 
-                links = articles.find_elements(By.TAG_NAME, 'a')
-                dates = articles.find_elements(
-                    By.CLASS_NAME, 'articlePost-date')
-
-                for i, art in enumerate(links):
-                    article = {"tag": tag}
-                    link = art.get_attribute('href')
-                    article['link'] = link
-                    article['date'] = dates[i].text.strip()
-                    data.append(article)
+                data.append(article)
 
             except Exception as e:
                 print(f"[{tag}] Error in section parsing: {e}")
@@ -109,12 +101,12 @@ def scrape_article_contents(data):
 
 
 def save_to_csv(data, filename):
-    fieldnames = ["tag", "title", "link", "date", "content"]
+    fieldnames = ["tag", "title", "link", "date"]
     with open(filename, 'w', encoding='utf-8', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         for row in data:
-            if all(row.get(field) for field in ["title", "link", "date", "content"]):
+            if all(row.get(field) for field in ["title", "link", "date"]):
                 writer.writerow(row)
     print(f"✅ Data berhasil disimpan ke {filename}")
 
@@ -153,16 +145,15 @@ try:
     all_data = []
     tags = ['rental-sepeda', 'komunitas-sepeda', 'sewa-sepeda',
             'sepeda-onthel', 'sepeda-listrik', 'sepeda-lipat']
-
     for tag in tags:
         scrape_berita(tag, all_data)
 
-    scrape_article_contents(all_data)
+    # scrape_article_contents(all_data)
 
     filename = "data_sepeda_kompas.csv"
     save_to_csv(all_data, filename)
 
-    generate_wordcloud_from_csv(filename)
+    # generate_wordcloud_from_csv(filename)
 
 finally:
     driver.quit()
